@@ -91,10 +91,10 @@ adoe <- oe %>%
   derive_vars_dy(reference_date = TRTSDT, source_vars = vars(ADT))
 
 adoe <- adoe %>%
-  # Add PARAMCD only - add PARAM etc later
+  # Add PARAM, PARAMCD
   derive_vars_merged(
     dataset_add = param_lookup,
-    new_vars = vars(PARAMCD),
+    new_vars = vars(PARAM, PARAMCD),
     by_vars = vars(OETESTCD, OELAT, STUDYEYE)
   ) %>%
   # Calculate AVAL and AVALC
@@ -102,66 +102,30 @@ adoe <- adoe %>%
     AVAL = OESTRESN,
     AVALC = OESTRESC
   )
-  # # Derive new parameters based on existing records. Note that, for the following
-  # # three `derive_param_*()` functions, only the variables specified in `by_vars` will
-  # # be populated in the newly created records.
-  #
-  # # Derive Mean Arterial Pressure
-  # derive_param_map(
-  #   by_vars = vars(STUDYID, USUBJID, !!!adsl_vars, VISIT, VISITNUM, ADT, ADY, VSTPT, VSTPTNUM),
-  #   set_values_to = vars(PARAMCD = "MAP"),
-  #   get_unit_expr = VSSTRESU,
-  #   filter = VSSTAT != "NOT DONE" | is.na(VSSTAT)
-  # ) %>%
-  # # Derive Body Surface Area
-  # derive_param_bsa(
-  #   by_vars = vars(STUDYID, USUBJID, !!!adsl_vars, VISIT, VISITNUM, ADT, ADY, VSTPT, VSTPTNUM),
-  #   method = "Mosteller",
-  #   set_values_to = vars(PARAMCD = "BSA"),
-  #   get_unit_expr = VSSTRESU,
-  #   filter = VSSTAT != "NOT DONE" | is.na(VSSTAT)
-  # ) %>%
-  # # Derive Body Surface Area
-  # derive_param_bmi(
-  #   by_vars = vars(STUDYID, USUBJID, !!!adsl_vars, VISIT, VISITNUM, ADT, ADY, VSTPT, VSTPTNUM),
-  #   set_values_to = vars(PARAMCD = "BMI"),
-  #   get_unit_expr = VSSTRESU,
-  #   filter = VSSTAT != "NOT DONE" | is.na(VSSTAT)
-  # )
-
-############## END OF WORK SO FAR #############################
-# Note: want to add ANL02FL and wors01fl
 
 
-# get visit info
-advs <- advs %>%
+# Derive visit info - requires updating once we get oe test data
+adoe <- adoe %>%
   # Derive Timing
   mutate(
-    ATPTN = VSTPTNUM,
-    ATPT = VSTPT,
+    ATPTN = OETPTNUM,
+    ATPT = OETPT,
     AVISIT = case_when(
-      str_detect(VISIT, "SCREEN|UNSCHED|RETRIEVAL|AMBUL") ~ NA_character_,
+      str_detect(str_to_upper(VISIT), "SCREEN|RETRIEVAL|AMBUL|TIMEPOINT|DELAYED") ~ NA_character_,
+      VISIT == "Day 1" ~ "Baseline",
       !is.na(VISIT) ~ str_to_title(VISIT),
       TRUE ~ NA_character_
     ),
     AVISITN = as.numeric(case_when(
-      VISIT == "BASELINE" ~ "0",
-      str_detect(VISIT, "WEEK") ~ str_trim(str_replace(VISIT, "WEEK", "")),
+      AVISIT == "Baseline" ~ "0",
+      AVISIT == "Early Termination" ~ "299",
+      AVISIT == "Unscheduled" ~ "999",
+      str_detect(AVISIT, "Day") ~ str_trim(str_replace(AVISIT, "Day", "")),
       TRUE ~ NA_character_
     ))
   )
 
-# Derive a new record as a summary record (e.g. mean of the triplicates at each time point)
-advs <- advs %>%
-  derive_summary_records(
-    by_vars = vars(STUDYID, USUBJID, !!!adsl_vars, PARAMCD, AVISITN, AVISIT, ADT, ADY),
-    filter = !is.na(AVAL),
-    analysis_var = AVAL,
-    summary_fun = mean,
-    set_values_to = vars(DTYPE = "AVERAGE")
-  )
-
-advs <- advs %>%
+adoe <- adoe %>%
   # Calculate ONTRTFL
   derive_var_ontrtfl(
     start_date = ADT,
@@ -170,12 +134,9 @@ advs <- advs %>%
     filter_pre_timepoint = AVISIT == "Baseline"
   )
 
-# Calculate ANRIND : requires the reference ranges ANRLO, ANRHI
-# Also accommodates the ranges A1LO, A1HI
-advs <- advs %>%
-  derive_vars_merged(dataset_add = range_lookup, by_vars = vars(PARAMCD)) %>%
-  # Calculate ANRIND
-  derive_var_anrind()
+############### END OF WORK SO FAR ####################
+# need to derive: ANL01FL, ANL02FL, LAST01FL, WORS01FL, and some of the stuff below
+
 
 # Derive baseline flags
 advs <- advs %>%
