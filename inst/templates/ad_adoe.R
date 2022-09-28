@@ -1,6 +1,6 @@
 # Name: ADOE
 #
-# Label: Ophthalmology Exam Analysis Dataset Dataset
+# Label: Ophthalmology Exam Analysis Dataset
 #
 # Input: adsl, oe
 library(admiral)
