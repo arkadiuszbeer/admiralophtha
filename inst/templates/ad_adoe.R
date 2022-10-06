@@ -78,8 +78,7 @@ adoe <- adoe %>%
     AVALC = OESTRESC
   )
 
-
-# Derive visit info - no ATPT and ATPTN as SDTM variables not in test data
+# Derive visit info - no ATPT and ATPTN yet as SDTM variables not in test data
 adoe <- adoe %>%
   mutate(
     # ATPTN = OETPTNUM,
@@ -97,6 +96,14 @@ adoe <- adoe %>%
 
   )
 
+# Derive DTYPE and BASETYPE
+adoe <- adoe %>%
+  mutate(
+    DTYPE = NA_character_,
+    BASETYPE = "LAST"
+  )
+
+# Derive Treatment flags
 adoe <- adoe %>%
   # Calculate ONTRTFL
   derive_var_ontrtfl(
@@ -104,38 +111,22 @@ adoe <- adoe %>%
     ref_start_date = TRTSDT,
     ref_end_date = TRTEDT,
     filter_pre_timepoint = AVISIT == "Baseline"
-  )
-
-############### END OF WORK SO FAR ####################
-# need to derive: ANL01FL, ANL02FL, LAST01FL, WORS01FL, and some of the stuff below
-
-
-# Derive baseline flags
-advs <- advs %>%
-  # Calculate BASETYPE
-  derive_var_basetype(
-    basetypes = rlang::exprs(
-      "LAST: AFTER LYING DOWN FOR 5 MINUTES" = ATPTN == 815,
-      "LAST: AFTER STANDING FOR 1 MINUTE" = ATPTN == 816,
-      "LAST: AFTER STANDING FOR 3 MINUTES" = ATPTN == 817,
-      "LAST" = is.na(ATPTN)
-    )
   ) %>%
   # Calculate ABLFL
   restrict_derivation(
     derivation = derive_var_extreme_flag,
     args = params(
       by_vars = vars(STUDYID, USUBJID, BASETYPE, PARAMCD),
-      order = vars(ADT, VISITNUM, VSSEQ),
+      order = vars(ADT, VISITNUM, OESEQ),
       new_var = ABLFL,
       mode = "last"
     ),
-    filter = (!is.na(AVAL) &
-                ADT <= TRTSDT & !is.na(BASETYPE) & is.na(DTYPE))
+    filter = (!is.na(AVAL) & ADT <= TRTSDT & !is.na(BASETYPE))
   )
 
+
 # Derive baseline information
-advs <- advs %>%
+adoe <- adoe %>%
   # Calculate BASE
   derive_var_base(
     by_vars = vars(STUDYID, USUBJID, PARAMCD, BASETYPE),
@@ -148,12 +139,6 @@ advs <- advs %>%
     source_var = AVALC,
     new_var = BASEC
   ) %>%
-  # Calculate BNRIND
-  derive_var_base(
-    by_vars = vars(STUDYID, USUBJID, PARAMCD, BASETYPE),
-    source_var = ANRIND,
-    new_var = BNRIND
-  ) %>%
   # Calculate CHG
   derive_var_chg() %>%
   # Calculate PCHG
@@ -161,12 +146,12 @@ advs <- advs %>%
 
 
 # ANL01FL: Flag last result within an AVISIT and ATPT for post-baseline records
-advs <- advs %>%
+adoe <- adoe %>%
   restrict_derivation(
     derivation = derive_var_extreme_flag,
     args = params(
       new_var = ANL01FL,
-      by_vars = vars(USUBJID, PARAMCD, AVISIT, ATPT, DTYPE),
+      by_vars = vars(USUBJID, PARAMCD, AVISIT, DTYPE),
       order = vars(ADT, AVAL),
       mode = "last"
     ),
