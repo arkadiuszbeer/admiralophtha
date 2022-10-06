@@ -19,56 +19,31 @@ library(stringr)
 # data("admiral_oe") # when this exists!
 # data("admiral_adsl") # can't use this yet as ADSL needs STUDYEYE
 
-adsl <- adsl_sas
-oe <- oe
+load("inst/templates/admiral_adsl.rda")
+oe <- load("inst/templates/admiral_oe.rda")
 
-oe <- convert_blanks_to_na(oe)
+adsl <- adsl %>%
+  as.data.frame() %>%
+  mutate(STUDYEYE = sample(c("LEFT", "RIGHT"), n(), replace = TRUE)) %>%
+  convert_blanks_to_na()
+
+oe <- convert_blanks_to_na(admiral_oe) %>% ungroup()
 
 # ---- Lookup tables ----
 
 # Assign PARAMCD, PARAM, and PARAMN
 param_lookup <- tibble::tribble(
   ~OETESTCD, ~OELAT, ~STUDYEYE, ~PARAMCD, ~PARAM, ~PARAMN,
-  "CSUBTH", "RIGHT", "RIGHT", "SCSUBTH", "Center Subfield Thickness (mmHg)-STUDY EYE", 1,
-  "CSUBTH", "LEFT", "LEFT", "SCSUBTH", "Center Subfield Thickness (mmHg)-STUDY EYE", 1,
-  "CSUBTH", "RIGHT", "LEFT", "FCSUBTH", "Center Subfield Thickness (mmHg)-FELLOW EYE", 2,
-  "CSUBTH", "LEFT", "RIGHT", "FCSUBTH", "Center Subfield Thickness (mmHg)-FELLOW EYE", 2,
-  "ASCAN", "RIGHT", "RIGHT", "SASCAN", "A-Scan-STUDY EYE", 3,
-  "ASCAN", "LEFT", "LEFT", "SASCAN", "A-Scan-STUDY EYE", 3,
-  "ASCAN", "RIGHT", "LEFT", "FASCAN", "A-Scan-FELLOW EYE", 4,
-  "ASCAN", "LEFT", "RIGHT", "FASCAN", "A-Scan-FELLOW EYE", 4,
-  "BSCAN", "RIGHT", "RIGHT", "SBSCAN", "B-Scan-STUDY EYE", 5,
-  "BSCAN", "LEFT", "LEFT", "SBSCAN", "B-Scan-STUDY EYE", 5,
-  "BSCAN", "RIGHT", "LEFT", "FBSCAN", "B-Scan-FELLOW EYE", 6,
-  "BSCAN", "LEFT", "RIGHT", "FBSCAN", "B-Scan-FELLOW EYE", 6
+  "DRSSR", "RIGHT", "RIGHT", "SDRSS", "Diabetic Retinopathy Sev Recode Value-STUDY EYE", 1,
+  "DRSSR", "LEFT", "LEFT", "SDRSS", "Diabetic Retinopathy Sev Recode Value-STUDY EYE", 1,
+  "DRSSR", "RIGHT", "LEFT", "FDRSS", "Diabetic Retinopathy Sev Recode Value-FELLOW EYE", 2,
+  "DRSSR", "LEFT", "RIGHT", "FDRSS", "Diabetic Retinopathy Sev Recode Value-FELLOW EYE", 2,
+  "VACSCORE", "RIGHT", "RIGHT", "SBCVA", "Visual Acuity Score-STUDY EYE", 3,
+  "VACSCORE", "LEFT", "LEFT", "SBCVA", "Visual Acuity Score-STUDY EYE", 3,
+  "VACSCORE", "RIGHT", "LEFT", "FBCVA", "Visual Acuity Score-FELLOW EYE", 4,
+  "VACSCORE", "LEFT", "RIGHT", "FBCVA", "Visual Acuity Score-FELLOW EYE", 4
 )
 attr(param_lookup$OETESTCD, "label") <- "Ophthalmology Test Short Name"
-
-# # Assign ANRLO/HI, A1LO/HI
-# range_lookup <- tibble::tribble(
-#   ~PARAMCD, ~ANRLO, ~ANRHI, ~A1LO, ~A1HI,
-#   "SYSBP", 90, 130, 70, 140,
-#   "DIABP", 60, 80, 40, 90,
-#   "PULSE", 60, 100, 40, 110,
-#   "TEMP", 36.5, 37.5, 35, 38
-# )
-# # ASSIGN AVALCAT1
-# avalcat_lookup <- tibble::tribble(
-#   ~PARAMCD, ~AVALCA1N, ~AVALCAT1,
-#   "HEIGHT", 1, ">100 cm",
-#   "HEIGHT", 2, "<= 100 cm"
-# )
-#
-# # ---- User defined functions ----
-#
-# # Here are some examples of how you can create your own functions that
-# #  operates on vectors, which can be used in `mutate()`.
-# format_avalcat1n <- function(param, aval) {
-#   case_when(
-#     param == "HEIGHT" & aval > 140 ~ 1,
-#     param == "HEIGHT" & aval <= 140 ~ 2
-#   )
-# }
 
 # ---- Derivations ----
 
@@ -104,25 +79,22 @@ adoe <- adoe %>%
   )
 
 
-# Derive visit info - requires updating once we get oe test data
+# Derive visit info - no ATPT and ATPTN as SDTM variables not in test data
 adoe <- adoe %>%
-  # Derive Timing
   mutate(
-    ATPTN = OETPTNUM,
-    ATPT = OETPT,
+    # ATPTN = OETPTNUM,
+    # ATPT = OETPT,
     AVISIT = case_when(
-      str_detect(str_to_upper(VISIT), "SCREEN|RETRIEVAL|AMBUL|TIMEPOINT|DELAYED") ~ NA_character_,
-      VISIT == "Day 1" ~ "Baseline",
+      str_detect(VISIT, "SCREEN") ~ "Screening",
       !is.na(VISIT) ~ str_to_title(VISIT),
       TRUE ~ NA_character_
     ),
-    AVISITN = as.numeric(case_when(
-      AVISIT == "Baseline" ~ "0",
-      AVISIT == "Early Termination" ~ "299",
-      AVISIT == "Unscheduled" ~ "999",
-      str_detect(AVISIT, "Day") ~ str_trim(str_replace(AVISIT, "Day", "")),
-      TRUE ~ NA_character_
-    ))
+
+    AVISITN = case_when(
+      AVISIT == "Baseline" ~ 0,
+      !is.na(VISITNUM) ~ round(VISITNUM,0)
+    )
+
   )
 
 adoe <- adoe %>%
