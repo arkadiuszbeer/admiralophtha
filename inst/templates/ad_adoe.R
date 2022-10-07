@@ -89,11 +89,7 @@ adoe <- adoe %>%
       TRUE ~ NA_character_
     ),
 
-    AVISITN = case_when(
-      AVISIT == "Baseline" ~ 0,
-      !is.na(VISITNUM) ~ round(VISITNUM,0)
-    )
-
+    AVISITN = round(VISITNUM,0)
   )
 
 # Derive DTYPE and BASETYPE
@@ -116,14 +112,52 @@ adoe <- adoe %>%
   restrict_derivation(
     derivation = derive_var_extreme_flag,
     args = params(
+      new_var = ABLFL,
       by_vars = vars(STUDYID, USUBJID, BASETYPE, PARAMCD),
       order = vars(ADT, VISITNUM, OESEQ),
-      new_var = ABLFL,
       mode = "last"
     ),
     filter = (!is.na(AVAL) & ADT <= TRTSDT & !is.na(BASETYPE))
   )
 
+# Derive visit flags
+adoe <- adoe %>%
+  # ANL01FL: Flag last result within a visit and timepoint for baseline and post-baseline records
+  restrict_derivation(
+    derivation = derive_var_extreme_flag,
+    args = params(
+      new_var = ANL01FL,
+      by_vars = vars(USUBJID, PARAMCD, AVISIT, DTYPE),
+      order = vars(ADT, AVAL),
+      mode = "last"
+    ),
+    filter = !is.na(AVISITN) & (ONTRTFL == "Y" | ABLFL == "Y")
+  )  %>%
+  # ANL02FL: Flag last result within a PARAMCD for baseline & post-baseline records
+  restrict_derivation(
+    derivation = derive_var_extreme_flag,
+    args = params(
+      new_var = ANL02FL,
+      by_vars = vars(USUBJID, PARAMCD, ABLFL),
+      order = vars(ADT),
+      mode = "last"
+    ),
+    filter = !is.na(AVISITN) & (ONTRTFL == "Y" | ABLFL == "Y")
+  )  %>%
+  # WORS01FL: Flag worst result with an
+  restrict_derivation(
+    derivation = derive_var_worst_flag,
+    args = params(
+      new_var = WORS01FL,
+      by_vars = vars(USUBJID, PARAMCD),
+      order = vars(desc(ADT)),
+      param_var = PARAMCD,
+      analysis_var = AVAL,
+      worst_high =  c("FDRSS", "SDRSS"), # put character(0) if no PARAMCDs here
+      worst_low = c("FBCVA", "SBCVA")    # put character(0) if no PARAMCDs here
+    ),
+    filter = !is.na(AVISITN) & ONTRTFL == "Y"
+  )
 
 # Derive baseline information
 adoe <- adoe %>%
@@ -144,65 +178,8 @@ adoe <- adoe %>%
   # Calculate PCHG
   derive_var_pchg()
 
-
-# ANL01FL: Flag last result within an AVISIT and ATPT for post-baseline records
-adoe <- adoe %>%
-  restrict_derivation(
-    derivation = derive_var_extreme_flag,
-    args = params(
-      new_var = ANL01FL,
-      by_vars = vars(USUBJID, PARAMCD, AVISIT, DTYPE),
-      order = vars(ADT, AVAL),
-      mode = "last"
-    ),
-    filter = !is.na(AVISITN) & ONTRTFL == "Y"
-  )
-
-# Get treatment information
-advs <- advs %>%
-  # Assign TRTA, TRTP
-  mutate(
-    TRTP = TRT01P,
-    TRTA = TRT01A
-  ) %>%
-  # Create End of Treatment Record
-  restrict_derivation(
-    derivation = derive_var_extreme_flag,
-    args = params(
-      by_vars = vars(STUDYID, USUBJID, PARAMCD, ATPTN),
-      order = vars(ADT),
-      new_var = EOTFL,
-      mode = "last"
-    ),
-    filter = (4 < VISITNUM &
-                VISITNUM <= 13 & ANL01FL == "Y" & is.na(DTYPE))
-  ) %>%
-  filter(EOTFL == "Y") %>%
-  mutate(
-    AVISIT = "End of Treatment",
-    AVISITN = 99
-  ) %>%
-  union_all(advs) %>%
-  select(-EOTFL)
-
-# Get ASEQ and AVALCATx and add PARAM/PARAMN
-advs <- advs %>%
-  # Calculate ASEQ
-  derive_var_obs_number(
-    new_var = ASEQ,
-    by_vars = vars(STUDYID, USUBJID),
-    order = vars(PARAMCD, ADT, AVISITN, VISITNUM, ATPTN, DTYPE),
-    check_type = "error"
-  ) %>%
-  # Derive AVALCA1N and AVALCAT1
-  mutate(AVALCA1N = format_avalcat1n(param = PARAMCD, aval = AVAL)) %>%
-  derive_vars_merged(dataset_add = avalcat_lookup, by_vars = vars(PARAMCD, AVALCA1N)) %>%
-  # Derive PARAM and PARAMN
-  derive_vars_merged(dataset_add = select(param_lookup, -VSTESTCD), by_vars = vars(PARAMCD))
-
-
 # Add all ADSL variables
-advs <- advs %>%
+adoe <- adoe %>%
   derive_vars_merged(
     dataset_add = select(adsl, !!!negate_vars(adsl_vars)),
     by_vars = vars(STUDYID, USUBJID)
@@ -215,4 +192,4 @@ advs <- advs %>%
 # ---- Save output ----
 
 dir <- tempdir() # Change to whichever directory you want to save the dataset in
-save(advs, file = file.path(dir, "advs.rda"), compress = "bzip2")
+save(adoe, file = file.path(dir, "adoe.rda"), compress = "bzip2")
