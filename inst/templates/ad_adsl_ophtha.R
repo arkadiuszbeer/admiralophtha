@@ -20,12 +20,15 @@ data("admiral_ds")
 data("admiral_ex")
 data("admiral_ae")
 data("admiral_lb")
+load("data/admiral_sc.rda") # This needs to change when SC data is merged into devel
 
 dm <- admiral_dm
 ds <- admiral_ds
 ex <- admiral_ex
 ae <- admiral_ae
 lb <- admiral_lb
+sc <- admiral_sc
+
 
 # When SAS datasets are imported into R using haven::read_sas(), missing
 # character values from SAS appear as "" characters in R, instead of appearing
@@ -37,6 +40,7 @@ ds <- convert_blanks_to_na(ds)
 ex <- convert_blanks_to_na(ex)
 ae <- convert_blanks_to_na(ae)
 lb <- convert_blanks_to_na(lb)
+sc <- convert_blanks_to_na(sc)
 
 # User defined functions ----
 
@@ -93,7 +97,14 @@ ex_ext <- ex %>%
 
 adsl <- dm %>%
   ## derive treatment variables (TRT01P, TRT01A) ----
-mutate(TRT01P = ARM, TRT01A = ACTARM) %>%
+mutate(
+  TRT01P = ARM,
+  TRT01A = ACTARM
+) %>%
+  ## derive study eye variable (STUDYEYE)
+  derive_var_studyeye(
+    dataset_sc = sc
+  ) %>%
   ## derive treatment start date (TRTSDTM) ----
 derive_vars_merged(
   dataset_add = ex_ext,
